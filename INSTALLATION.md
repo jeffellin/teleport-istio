@@ -50,7 +50,7 @@ Run the automated installation script:
 This script will:
 - Create the `istio-system` namespace
 - Install Istio with SPIFFE configuration
-- Configure trust domain as `cluster.local`
+- Configure trust domain as `ellinj.teleport.sh` (must match your Teleport cluster domain)
 - Disable path normalization for SPIFFE compatibility
 - Deploy istiod and istio-ingressgateway
 
@@ -141,6 +141,11 @@ tctl get role/istio-workload-identity-issuer
 
 This defines the SPIFFE ID template for Kubernetes workloads.
 
+**IMPORTANT**: The SPIFFE ID template must match Istio's expected format with `/sa/`:
+```
+spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>
+```
+
 ```bash
 tctl create -f teleport-workload-identity.yaml
 ```
@@ -150,6 +155,15 @@ tctl create -f teleport-workload-identity.yaml
 ```bash
 tctl get workload_identity/istio-workloads
 ```
+
+The template should show:
+```yaml
+spec:
+  spiffe:
+    id: /ns/{{ workload.kubernetes.namespace }}/sa/{{ workload.kubernetes.service_account }}
+```
+
+Note the `/sa/` component is critical for Istio compatibility.
 
 ### Step 7: Deploy tbot to Kubernetes
 
@@ -273,12 +287,12 @@ services:
 Key settings:
 ```yaml
 meshConfig:
-  trustDomain: cluster.local
+  trustDomain: ellinj.teleport.sh  # Must match your Teleport cluster domain
   pathNormalization:
     normalization: NONE
 ```
 
-These settings ensure SPIFFE compatibility.
+**CRITICAL**: The `trustDomain` must match your Teleport cluster domain. Replace `ellinj.teleport.sh` with your actual Teleport cluster address without the port.
 
 ## Troubleshooting
 
@@ -442,7 +456,9 @@ For issues or questions:
 1. **Token file security**: The `istio-tbot-token.yaml` file contains sensitive cluster-specific JWKS and is gitignored. NEVER commit this file to version control. Always use the `.template` file for reference.
 2. **JWKS is cluster-specific**: Always extract JWKS from your target cluster. Each cluster has unique keys.
 3. **Token security**: The join token allows any pod with `teleport-system:tbot` service account to join Teleport. Protect this service account accordingly.
-4. **Trust domain**: Must match between Istio (`cluster.local`) and SPIFFE IDs
-5. **Path normalization**: Must be `NONE` for SPIFFE compatibility
-6. **Socket path**: `/run/spire/sockets/socket` is the standard SPIFFE location
-7. **No trailing slashes**: SPIFFE IDs must not have trailing slashes per spec
+4. **Trust domain**: Must match between Istio and Teleport (use your Teleport cluster domain, e.g., `yourcluster.teleport.sh`)
+5. **SPIFFE ID format**: Must include `/sa/` component: `/ns/<namespace>/sa/<service-account>` for Istio compatibility
+6. **Path normalization**: Must be `NONE` for SPIFFE compatibility
+7. **Socket path**: `/run/spire/sockets/socket` is the standard SPIFFE location
+8. **No trailing slashes**: SPIFFE IDs must not have trailing slashes per spec
+9. **Restart after changes**: After updating WorkloadIdentity or tbot config, restart tbot pods: `kubectl rollout restart daemonset -n teleport-system tbot`

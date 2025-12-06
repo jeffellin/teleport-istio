@@ -6,6 +6,7 @@ echo "This script will remove:"
 echo "  - Istio components (istio-system namespace)"
 echo "  - tbot DaemonSet and resources (teleport-system namespace)"
 echo "  - Test application (test-app namespace)"
+echo "  - Sock Shop demo (sock-shop namespace)"
 echo "  - Teleport server-side resources (role, workload identity, token)"
 echo "  - Local generated token files (optional)"
 echo ""
@@ -120,6 +121,15 @@ else
     echo "No test-app namespace found"
 fi
 
+# Delete sock-shop namespace if it exists
+if kubectl get namespace sock-shop &>/dev/null; then
+    echo "Deleting sock-shop demo namespace..."
+    kubectl delete namespace sock-shop --timeout=60s || echo "Warning: sock-shop namespace deletion timed out"
+    kubectl wait --for=delete namespace/sock-shop --timeout=120s || echo "Warning: sock-shop namespace still exists"
+else
+    echo "No sock-shop namespace found"
+fi
+
 echo ""
 echo "=== Phase 5: Teleport Server-Side Resources ==="
 echo "Checking for Teleport resources (requires tctl and active tsh session)..."
@@ -189,6 +199,6 @@ echo ""
 echo "NOTE: You may need to manually remove /run/spire/sockets on worker nodes"
 echo ""
 echo "Remaining namespaces:"
-kubectl get namespaces | grep -E 'istio|teleport|test-app' || echo "  No Istio, Teleport, or test-app namespaces found ✓"
+kubectl get namespaces | grep -E 'istio|teleport|test-app|sock-shop' || echo "  No Istio, Teleport, test-app, or sock-shop namespaces found ✓"
 echo ""
 echo "Cleanup complete! Ready for fresh installation."

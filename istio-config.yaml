@@ -7,8 +7,8 @@ spec:
   profile: default
 
   meshConfig:
-    # Trust domain must match tbot configuration
-    trustDomain: cluster.local
+    # Trust domain must match Teleport cluster domain
+    trustDomain: ellinj.teleport.sh
 
     # Path normalization configuration
     # Starting with NONE to prevent any normalization that might add trailing slashes

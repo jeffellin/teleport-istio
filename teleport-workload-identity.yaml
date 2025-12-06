@@ -12,4 +12,4 @@ spec:
     # SPIFFE ID template following Istio's required pattern
     # spiffe://<trust.domain>/ns/<namespace>/sa/<service-account>
     # NO TRAILING SLASH - this is critical per SPIFFE spec!
-    id: /k8s/{{ workload.kubernetes.namespace }}/{{ workload.kubernetes.service_account }}
+    id: /ns/{{ workload.kubernetes.namespace }}/sa/{{ workload.kubernetes.service_account }}

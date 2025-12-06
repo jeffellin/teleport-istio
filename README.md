@@ -132,12 +132,44 @@ kubectl get pods -n test-app
 kubectl exec -n test-app <pod-name> -c istio-proxy -- ls -la /var/run/secrets/workload-spiffe-uds/
 ```
 
+## Sock Shop Demo Application
+
+⚠️ **Known Issue**: There is currently an mTLS certificate validation issue between Teleport-issued certificates and Istio's Envoy proxy. See [TROUBLESHOOTING-MTLS.md](TROUBLESHOOTING-MTLS.md) for details.
+
+**What Works**:
+- ✅ Teleport issues SPIFFE certificates correctly
+- ✅ Pods receive certificates with proper SPIFFE IDs
+- ✅ Trust domain configuration matches
+- ✅ External access to services works
+
+**What Doesn't Work**:
+- ❌ Service-to-service mTLS validation fails with `CERTIFICATE_VERIFY_FAILED`
+- ❌ Authorization policies cannot be fully tested
+
+For a comprehensive demonstration attempt:
+
+```bash
+# Deploy the Sock Shop demo
+kubectl apply -f sock-shop-demo.yaml
+
+# Wait for all pods to be ready
+kubectl get pods -n sock-shop -w
+
+# Test baseline functionality
+FRONTEND_IP=$(kubectl get svc -n sock-shop front-end -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl http://$FRONTEND_IP/  # External access works
+curl http://$FRONTEND_IP/catalogue  # Backend service fails with cert error
+```
+
+See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and [TROUBLESHOOTING-MTLS.md](TROUBLESHOOTING-MTLS.md) for investigation notes.
+
 ## Files
 
 ### Configuration Files (Safe to Commit)
 - `istio-install.sh` - Automated Istio installation script
 - `istio-config.yaml` - Istio configuration with SPIFFE integration
 - `create-token.sh` - Helper script to create cluster-specific join token
+- `cleanup.sh` - Comprehensive cleanup script for all resources
 - `teleport-bot-role.yaml` - Teleport role for workload identity issuer
 - `teleport-workload-identity.yaml` - Workload identity definition
 - `istio-tbot-token.yaml.template` - Template for Kubernetes join token (copy and customize)
@@ -145,6 +177,9 @@ kubectl exec -n test-app <pod-name> -c istio-proxy -- ls -la /var/run/secrets/wo
 - `tbot-config.yaml` - tbot configuration
 - `tbot-daemonset.yaml` - tbot DaemonSet deployment
 - `test-app-deployment.yaml` - Sample application with Istio injection
+- `sock-shop-demo.yaml` - Sock Shop microservices demo application
+- `sock-shop-deny-all.yaml` - Default deny-all policy for zero-trust demonstration
+- `sock-shop-policies.yaml` - Complete Istio authorization policies using SPIFFE IDs
 
 ### Generated Files (Gitignored - DO NOT COMMIT)
 - `istio-tbot-token.yaml` - Cluster-specific join token with JWKS (generated from template)
