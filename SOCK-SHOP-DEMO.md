@@ -1,6 +1,6 @@
 # Sock Shop Demo: Verifying Teleport Workload Identity with Istio
 
-This guide demonstrates how to verify that Teleport Workload Identity is fully integrated with Istio using the Sock Shop microservices application. This demo proves that SPIFFE certificate issuance, mTLS communication, and identity-based authorization all work correctly.
+This guide demonstrates how to verify that Teleport Workload Identity is wired into Istio using the Sock Shop microservices application, including end-to-end mTLS.
 
 ## Overview
 
@@ -42,7 +42,7 @@ Complete the main installation:
 
 ## Quick Reference: Verification Commands
 
-Here are the key commands for verifying the integration (use after deployment):
+Here are the key commands for verifying the integration (use after deployment).
 
 ```bash
 # Set pod name variable

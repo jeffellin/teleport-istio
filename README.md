@@ -45,7 +45,7 @@ This integration provides:
 │  ┌─────────────────────────────────────────┐       │
 │  │         Istio Control Plane              │       │
 │  │  - istiod (with SPIFFE integration)      │       │
-│  │  - Trust Domain: cluster.local           │       │
+│  │  - Trust Domain: ellinj.teleport.sh      │       │
 │  └─────────────────────────────────────────┘       │
 └─────────────────────────────────────────────────────┘
 ```
@@ -72,12 +72,12 @@ This integration provides:
 Workloads receive SPIFFE IDs following the Istio-compatible pattern:
 
 ```
-spiffe://cluster.local/k8s/<namespace>/<service-account>
+spiffe://ellinj.teleport.sh/ns/<namespace>/sa/<service-account>
 ```
 
 Example:
 ```
-spiffe://cluster.local/k8s/test-app/test-app
+spiffe://ellinj.teleport.sh/ns/test-app/sa/test-app
 ```
 
 ## Prerequisites
@@ -134,17 +134,12 @@ kubectl exec -n test-app <pod-name> -c istio-proxy -- ls -la /var/run/secrets/wo
 
 ## Sock Shop Demo Application
 
-⚠️ **Known Issue**: There is currently an mTLS certificate validation issue between Teleport-issued certificates and Istio's Envoy proxy. See [TROUBLESHOOTING-MTLS.md](TROUBLESHOOTING-MTLS.md) for details.
-
 **What Works**:
 - ✅ Teleport issues SPIFFE certificates correctly
 - ✅ Pods receive certificates with proper SPIFFE IDs
 - ✅ Trust domain configuration matches
 - ✅ External access to services works
-
-**What Doesn't Work**:
-- ❌ Service-to-service mTLS validation fails with `CERTIFICATE_VERIFY_FAILED`
-- ❌ Authorization policies cannot be fully tested
+- ✅ Service-to-service mTLS validation succeeds with Teleport-issued certificates
 
 For a comprehensive demonstration attempt:
 
@@ -161,7 +156,7 @@ curl http://$FRONTEND_IP/  # External access works
 curl http://$FRONTEND_IP/catalogue  # Backend service fails with cert error
 ```
 
-See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and [TROUBLESHOOTING-MTLS.md](TROUBLESHOOTING-MTLS.md) for investigation notes.
+See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and investigation notes embedded there.
 
 ## Files
 
@@ -192,7 +187,7 @@ See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and [TROUBLE
 The configuration uses `/run/spire/sockets/socket` as the socket path, which matches the standard SPIFFE Workload API location. This eliminates the need for symlinks or custom path configurations.
 
 ### Trust Domain
-Must match between Istio (`cluster.local`) and the workload's SPIFFE ID prefix.
+Must match between Istio (`ellinj.teleport.sh`) and the workload's SPIFFE ID prefix.
 
 ### Path Normalization
 Set to `NONE` in Istio configuration to maintain SPIFFE ID compatibility.
@@ -237,7 +232,7 @@ The cleanup script removes:
 - Teleport server-side resources (role, workload identity, token via tctl)
 - Local generated token files (optional, with confirmation)
 
-See [CLEANUP-IMPROVEMENTS.md](CLEANUP-IMPROVEMENTS.md) for detailed information about the cleanup process.
+The cleanup script is self-contained; see its inline help for options.
 
 ## Resources
 
