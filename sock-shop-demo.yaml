@@ -264,6 +264,58 @@ spec:
         emptyDir:
           medium: Memory
 ---
+# Carts DB (MongoDB)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: carts-db
+  namespace: sock-shop
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts-db
+  namespace: sock-shop
+  labels:
+    app: carts-db
+spec:
+  ports:
+  - port: 27017
+    targetPort: 27017
+  selector:
+    app: carts-db
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carts-db
+  namespace: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carts-db
+  template:
+    metadata:
+      labels:
+        app: carts-db
+      annotations:
+        inject.istio.io/templates: "sidecar,spire"
+    spec:
+      serviceAccountName: carts-db
+      containers:
+      - name: carts-db
+        image: mongo:4.4
+        ports:
+        - name: mongo
+          containerPort: 27017
+        volumeMounts:
+        - name: carts-db-data
+          mountPath: /data/db
+      volumes:
+      - name: carts-db-data
+        emptyDir: {}
+---
 # Orders service
 apiVersion: v1
 kind: ServiceAccount

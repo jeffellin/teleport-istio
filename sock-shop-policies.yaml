@@ -26,9 +26,10 @@ spec:
   rules:
   - from:
     - source:
-        # SPIFFE ID format: spiffe://<trust-domain>/k8s/<namespace>/<service-account>
+        # SPIFFE ID format: <trust-domain>/ns/<namespace>/sa/<service-account>
+        # Note: Istio automatically adds the spiffe:// prefix
         principals:
-        - "spiffe://ellinj.teleport.sh/k8s/sock-shop/front-end"
+        - "ellinj.teleport.sh/ns/sock-shop/sa/front-end"
     to:
     - operation:
         methods: ["GET"]
@@ -50,10 +51,30 @@ spec:
   - from:
     - source:
         principals:
-        - "spiffe://ellinj.teleport.sh/k8s/sock-shop/catalogue"
+        - "ellinj.teleport.sh/ns/sock-shop/sa/catalogue"
     to:
     - operation:
         ports: ["3306"]
+---
+# Allow carts service to call carts-db (MongoDB)
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: carts-db-allow-carts
+  namespace: sock-shop
+spec:
+  selector:
+    matchLabels:
+      app: carts-db
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        principals:
+        - "ellinj.teleport.sh/ns/sock-shop/sa/carts"
+    to:
+    - operation:
+        ports: ["27017"]
 ---
 # Allow front-end to call carts service
 apiVersion: security.istio.io/v1
@@ -70,11 +91,11 @@ spec:
   - from:
     - source:
         principals:
-        - "spiffe://ellinj.teleport.sh/k8s/sock-shop/front-end"
+        - "ellinj.teleport.sh/ns/sock-shop/sa/front-end"
     to:
     - operation:
         methods: ["GET", "POST", "DELETE"]
-        paths: ["/carts*"]
+        paths: ["/cart*"]
 ---
 # Allow front-end to call orders service
 apiVersion: security.istio.io/v1
@@ -91,7 +112,7 @@ spec:
   - from:
     - source:
         principals:
-        - "spiffe://ellinj.teleport.sh/k8s/sock-shop/front-end"
+        - "ellinj.teleport.sh/ns/sock-shop/sa/front-end"
     to:
     - operation:
         methods: ["GET", "POST"]
@@ -126,3 +147,43 @@ metadata:
 spec:
   mtls:
     mode: STRICT
+---
+# Allow MySQL protocol for catalogue-db
+# MySQL protocol doesn't work well with strict mTLS wrapping
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: catalogue-db-permissive
+  namespace: sock-shop
+spec:
+  selector:
+    matchLabels:
+      app: catalogue-db
+  mtls:
+    mode: STRICT  # Enforce mTLS
+---
+# Allow direct access to front-end without mTLS
+# This permits external LoadBalancer access without certificates
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: frontend-permissive
+  namespace: sock-shop
+spec:
+  selector:
+    matchLabels:
+      app: front-end
+  mtls:
+    mode: PERMISSIVE  # Allows both mTLS and plaintext
+---
+# Enforce client mTLS policy for catalogue-db
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: catalogue-db
+  namespace: sock-shop
+spec:
+  host: catalogue-db.sock-shop.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
