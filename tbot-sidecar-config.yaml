@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tbot-sidecar-config
+  namespace: test-app
+data:
+  # Example config for running tbot as a sidecar. Customize proxy_server, join token,
+  # selector, and namespace as needed for your workload.
+  tbot.yaml: |
+    version: v2
+    proxy_server: ellinj.teleport.sh:443
+    onboarding:
+      join_method: kubernetes
+      token: istio-sidecar-k8s-join
+    storage:
+      type: memory
+    debug: true
+    services:
+      - type: workload-identity-api
+        listen: unix:///run/spire/sockets/socket
+        selector:
+          name: istio-workloads
+        attestors:
+          kubernetes:
+            enabled: true
+            kubelet:
+              secure_port: 10250
+              token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              ca_path: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+              # In demo clusters the kubelet certs are often self-signed
+              skip_verify: true

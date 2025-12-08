@@ -37,8 +37,22 @@ Each service has:
 
 Complete the main installation:
 - Istio installed with SPIFFE integration
-- tbot DaemonSet running on all nodes
 - Teleport workload identity configured
+- Decide how to deliver the Workload API (DaemonSet vs per-pod sidecar):
+  - DaemonSet path: deploy `tbot-daemonset.yaml` and use injector template `sidecar,spire`.
+  - Sidecar path (default in this demo): create a Teleport token from `istio-tbot-sidecar-token.yaml.template` (JWKS + `sock-shop:*` allowlist), create `tbot-sidecar-config` ConfigMap in `sock-shop`, and use injector template `sidecar,spire-sidecar`.
+
+## Choose your Workload API delivery
+
+**Option A: DaemonSet (node-level)**
+- Apply `tbot-rbac.yaml`, `tbot-config.yaml`, and `tbot-daemonset.yaml`.
+- In `sock-shop-demo.yaml`, change annotations to `inject.istio.io/templates: "sidecar,spire"` (and the namespace annotation similarly).
+- You can omit the `tbot-sidecar-config` ConfigMap if you are not using the sidecar template.
+
+**Option B: Per-pod sidecar (default in repo)**
+- Create the Teleport token from `istio-tbot-sidecar-token.yaml.template` (JWKS + allowlist including `sock-shop:*`), and `tctl create -f ...`.
+- Apply the `tbot-sidecar-config` ConfigMap in `sock-shop` (update `proxy_server`, `onboarding.token`, selector if needed).
+- Keep `inject.istio.io/templates: "sidecar,spire-sidecar"` on the namespace and workloads (already set in the manifest).
 
 ## Quick Reference: Verification Commands
 
@@ -74,6 +88,10 @@ Deploy the application with Istio sidecar injection enabled:
 ```bash
 kubectl apply -f sock-shop-demo.yaml
 ```
+
+Notes:
+- By default the manifest uses the `spire-sidecar` template and expects a Teleport token named `istio-sidecar-k8s-join` (from `istio-tbot-sidecar-token.yaml.template`) and the `tbot-sidecar-config` ConfigMap in the `sock-shop` namespace.
+- If you are using the DaemonSet path instead, change the namespace/workload annotations to `inject.istio.io/templates: "sidecar,spire"` and ensure the tbot DaemonSet is deployed and healthy.
 
 **Wait for all pods to be ready:**
 

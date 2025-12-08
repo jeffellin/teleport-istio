@@ -62,3 +62,83 @@ spec:
                 value: unix:///run/secrets/workload-spiffe-uds/socket
               - name: PILOT_CERT_PROVIDER
                 value: "workloadapi"
+        # Sidecar-delivered Workload API (no hostPath). Adds a tbot sidecar that writes the SPIFFE socket
+        # into an emptyDir shared with the Envoy proxy.
+        spire-sidecar: |
+          spec:
+            volumes:
+            - name: workload-socket
+              emptyDir: {}
+            - name: tbot-config
+              configMap:
+                name: tbot-sidecar-config
+            - name: join-sa-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    path: join-token
+                    audience: ellinj.teleport.sh
+                    expirationSeconds: 600
+            - name: default-sa-token
+              projected:
+                sources:
+                - serviceAccountToken:
+                    path: token
+                - configMap:
+                    name: kube-root-ca.crt
+                    items:
+                    - key: ca.crt
+                      path: ca.crt
+                - downwardAPI:
+                    items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+            containers:
+            - name: tbot
+              image: public.ecr.aws/gravitational/tbot-distroless:18
+              imagePullPolicy: IfNotPresent
+              args:
+              - start
+              - -c
+              - /config/tbot.yaml
+              env:
+              - name: TELEPORT_ANONYMOUS_TELEMETRY
+                value: "1"
+              - name: KUBERNETES_TOKEN_PATH
+                value: /var/run/secrets/tokens/join-token
+              volumeMounts:
+              - name: tbot-config
+                mountPath: /config
+                readOnly: true
+              - name: workload-socket
+                mountPath: /run/spire/sockets
+              - name: join-sa-token
+                mountPath: /var/run/secrets/tokens
+                readOnly: true
+              - name: default-sa-token
+                mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+                readOnly: true
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+              securityContext:
+                runAsNonRoot: false
+                runAsUser: 0
+                capabilities:
+                  drop:
+                  - ALL
+            - name: istio-proxy
+              volumeMounts:
+              - name: workload-socket
+                mountPath: /run/secrets/workload-spiffe-uds
+                readOnly: true
+              env:
+              - name: CA_ADDR
+                value: unix:///run/secrets/workload-spiffe-uds/socket
+              - name: PILOT_CERT_PROVIDER
+                value: "workloadapi"

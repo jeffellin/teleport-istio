@@ -1,0 +1,31 @@
+# Template for Kubernetes Join Token used by tbot sidecars
+# DO NOT commit the generated token file - it contains cluster-specific JWKS
+#
+# Instructions:
+# 1. Extract JWKS: kubectl get --raw /openid/v1/jwks
+# 2. Copy this template: cp istio-tbot-sidecar-token.yaml.template istio-tbot-sidecar-token.yaml
+# 3. Replace PASTE_JWKS_HERE with the JWKS JSON from step 1
+# 4. Update the allowlist to include the namespaces/service accounts that will run the sidecar
+# 5. Create the token in Teleport: tctl create -f istio-tbot-sidecar-token.yaml
+# 6. Use the token name in your sidecar config (tbot-sidecar-config.yaml)
+
+kind: token
+version: v2
+metadata:
+  name: istio-sidecar-k8s-join
+spec:
+  bot_name: istio-sidecar
+  roles:
+    - Bot
+  join_method: kubernetes
+  kubernetes:
+    type: static_jwks
+    allow:
+      # Replace with the namespaces and service accounts that will run tbot sidecars.
+      # Use "namespace:*" to allow all service accounts in the namespace.
+      - service_account: "test-app:*"
+    static_jwks:
+      # IMPORTANT: Replace the entire jwks value below with your cluster's JWKS
+      # Get it by running: kubectl get --raw /openid/v1/jwks
+      # The JWKS should be a single-line JSON string
+      jwks: 'PASTE_JWKS_HERE'

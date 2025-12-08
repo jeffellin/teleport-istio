@@ -31,11 +31,8 @@ spec:
         app: test-app
         spiffe.io/spire-managed-identity: "true"
       annotations:
-        # Use the SPIRE integration template for Istio sidecar
-        inject.istio.io/templates: "sidecar,spire"
-        # Mount the SPIFFE socket from hostPath
-        sidecar.istio.io/userVolumeMount: '[{"name":"workload-socket","mountPath":"/run/secrets/workload-spiffe-uds","readOnly":true}]'
-        sidecar.istio.io/userVolume: '[{"name":"workload-socket","hostPath":{"path":"/run/spire/sockets","type":"Directory"}}]'
+        # Use the sidecar-delivered SPIRE integration (no hostPath)
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: test-app
       # Node selector to run on k8s-worker-1 where tbot is working

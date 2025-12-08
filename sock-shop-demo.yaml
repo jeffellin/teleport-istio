@@ -7,6 +7,37 @@ metadata:
   name: sock-shop
   labels:
     istio-injection: enabled  # Enable automatic Istio sidecar injection
+  annotations:
+    inject.istio.io/templates: "sidecar,spire-sidecar"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tbot-sidecar-config
+  namespace: sock-shop
+data:
+  tbot.yaml: |
+    version: v2
+    proxy_server: ellinj.teleport.sh:443
+    onboarding:
+      join_method: kubernetes
+      token: istio-sidecar-k8s-join
+    storage:
+      type: memory
+    debug: true
+    services:
+      - type: workload-identity-api
+        listen: unix:///run/spire/sockets/socket
+        selector:
+          name: istio-workloads
+        attestors:
+          kubernetes:
+            enabled: true
+            kubelet:
+              secure_port: 10250
+              token_path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+              ca_path: "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+              skip_verify: true
 ---
 # Front-end service
 apiVersion: v1
@@ -45,7 +76,7 @@ spec:
       labels:
         app: front-end
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: front-end
       containers:
@@ -116,7 +147,7 @@ spec:
       labels:
         app: catalogue
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: catalogue
       containers:
@@ -185,7 +216,7 @@ spec:
       labels:
         app: catalogue-db
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: catalogue-db
       containers:
@@ -236,7 +267,7 @@ spec:
       labels:
         app: carts
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: carts
       containers:
@@ -300,7 +331,7 @@ spec:
       labels:
         app: carts-db
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: carts-db
       containers:
@@ -352,7 +383,7 @@ spec:
       labels:
         app: orders
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "sidecar,spire-sidecar"
     spec:
       serviceAccountName: orders
       containers:

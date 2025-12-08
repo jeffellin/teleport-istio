@@ -30,6 +30,19 @@ tctl status
 
 ## Installation Steps
 
+### Choose a delivery model first
+
+You have two supported options for how the Workload API is delivered into pods:
+
+- **Option A: DaemonSet + hostPath** (injector template `sidecar,spire`)
+  - tbot runs once per node, writing the SPIFFE socket to `/run/spire/sockets` on the host.
+  - Pods mount the hostPath socket via the injector template.
+- **Option B: Per-pod sidecar (no hostPath, no DaemonSet)** (injector template `sidecar,spire-sidecar`)
+  - A `tbot` sidecar is injected into each pod, writing the SPIFFE socket to an `emptyDir` shared with Envoy.
+  - No node-level DaemonSet required.
+
+Pick Option A or Option B now; the token creation in Step 4 and the deployment steps later depend on this choice.
+
 ### Step 1: Set Your Kubeconfig (if needed)
 
 If you're using a non-default kubeconfig:
@@ -84,44 +97,17 @@ kubectl get --raw /openid/v1/jwks
 
 ### Step 4: Create Kubernetes Join Token with Cluster JWKS
 
-**SECURITY NOTE**: The token file contains cluster-specific JWKS and should NEVER be committed to version control. A template file is provided, and the actual token file is already in `.gitignore`.
+**SECURITY NOTE**: Token files contain cluster-specific JWKS and are gitignored. Do not commit them.**
 
-**Option A: Use the automated helper script (recommended):**
+- **If you are using Option A (DaemonSet / `sidecar,spire`)**  
+  - Recommended: `./create-token.sh` (generates `istio-tbot-token.yaml` from JWKS)  
+  - Or manual: copy `istio-tbot-token.yaml.template` → `istio-tbot-token.yaml`, inject JWKS, then `tctl create -f istio-tbot-token.yaml`  
+  - Verify: `tctl get token/istio-tbot-k8s-join`
 
-```bash
-./create-token.sh
-```
-
-This script will automatically extract the cluster JWKS and create `istio-tbot-token.yaml` from the template.
-
-**Option B: Manual creation:**
-
-```bash
-# Copy the template
-cp istio-tbot-token.yaml.template istio-tbot-token.yaml
-
-# Extract JWKS and update the token file
-kubectl get --raw /openid/v1/jwks | \
-  sed 's/"/\\"/g' | \
-  xargs -I {} sed -i.bak "s|'PASTE_JWKS_HERE'|'{}'|" istio-tbot-token.yaml
-
-# Clean up backup file (macOS creates .bak files)
-rm -f istio-tbot-token.yaml.bak
-```
-
-**The file `istio-tbot-token.yaml` is gitignored and should remain local only.**
-
-**Create the token in Teleport:**
-
-```bash
-tctl create -f istio-tbot-token.yaml
-```
-
-**Verify token creation:**
-
-```bash
-tctl get token/istio-tbot-k8s-join
-```
+- **If you are using Option B (per-pod sidecar / `sidecar,spire-sidecar`)**  
+  - Recommended: `./create-sidecar-token.sh` (generates `istio-tbot-sidecar-token.yaml` from JWKS)  
+  - Or manual: copy `istio-tbot-sidecar-token.yaml.template` → `istio-tbot-sidecar-token.yaml`, inject JWKS and adjust the service_account allowlist, then `tctl create -f istio-tbot-sidecar-token.yaml`  
+  - Verify: `tctl get token/istio-sidecar-k8s-join`
 
 ### Step 5: Create Teleport Bot Role
 
@@ -165,9 +151,11 @@ spec:
 
 Note the `/sa/` component is critical for Istio compatibility.
 
-### Step 7: Deploy tbot to Kubernetes
+### Step 7: Choose how to deliver the Workload API (DaemonSet vs per-pod sidecar)
 
-Deploy the tbot DaemonSet that will provide the SPIFFE Workload API on each node.
+**Option A: DaemonSet (node-level, hostPath)** — continue to Step 8 after completing this option.
+
+Deploy tbot as a DaemonSet that writes the SPIFFE socket to `/run/spire/sockets` on each node (works with the `spire` injector template).
 
 ```bash
 # Create namespace, service account, and RBAC
@@ -180,39 +168,42 @@ kubectl apply -f tbot-config.yaml
 kubectl apply -f tbot-daemonset.yaml
 ```
 
-**Verify tbot deployment:**
-
+Verify DaemonSet:
 ```bash
 kubectl get pods -n teleport-system
-```
-
-Expected output (one pod per node):
-```
-NAME         READY   STATUS    RESTARTS   AGE
-tbot-xxxxx   1/1     Running   0          30s
-tbot-yyyyy   1/1     Running   0          30s
-tbot-zzzzz   1/1     Running   0          30s
-```
-
-**Check tbot logs:**
-
-```bash
 kubectl logs -n teleport-system <tbot-pod-name>
 ```
 
-Look for successful messages:
-```
-INFO [TBOT:SVC:] Listener opened for Workload API endpoint addr:/run/spire/sockets/socket
-INFO [TBOT:HEAR] Sent heartbeat
-```
+Expected: one pod per node, logs show `Listener opened for Workload API endpoint`.
 
-### Step 8: Deploy Test Application
+**Option B: Per-pod sidecar (no hostPath, no DaemonSet)** — skip Step 8 and go directly to Step 9 after completing this option.
+
+Deliver the Workload API via the injector template `spire-sidecar`, which injects a `tbot` container into each workload pod and shares an `emptyDir` socket volume with Envoy.
+
+1) Create the sidecar token from `istio-tbot-sidecar-token.yaml.template` (add JWKS and allowed namespaces/service accounts), then `tctl create -f istio-tbot-sidecar-token.yaml`. The token name must match `onboarding.token` in your ConfigMap.
+2) For each namespace, create a ConfigMap from `tbot-sidecar-config.yaml` with your Teleport address, token name, selector, and namespace.
+3) Annotate the namespace or workload with `inject.istio.io/templates: "sidecar,spire-sidecar"`.
+4) Skip applying the DaemonSet manifests (`tbot-daemonset.yaml`); the injector will add the sidecar automatically to each pod.
+
+### Step 8: Deploy Test Application (DaemonSet path only)
 
 Deploy a sample application with Istio sidecar injection:
 
 ```bash
 kubectl apply -f test-app-deployment.yaml
 ```
+
+This step is for the DaemonSet path (Option A). If you are using the per-pod sidecar path (Option B), skip to Step 9 and deploy your workloads with the `sidecar,spire-sidecar` annotation plus the ConfigMap/token prerequisites.
+
+If you are on Option A, deploy a sample application with Istio sidecar injection:
+
+```bash
+kubectl apply -f test-app-deployment.yaml
+```
+
+Notes for Option A:
+- Set `inject.istio.io/templates: "sidecar,spire"` if you are using the DaemonSet.
+- Ensure the DaemonSet is running and the hostPath socket is available on the node.
 
 **Verify test application:**
 
@@ -228,7 +219,7 @@ test-app-xxxxxxxxxx-xxxxx   2/2     Running   0          1m
 
 Note: `2/2` indicates both the application container and Istio sidecar are running.
 
-### Step 9: Verify SPIFFE Integration
+### Step 9: Verify SPIFFE Integration (both paths)
 
 Check that the SPIFFE socket is available in the pod:
 
@@ -413,10 +404,11 @@ After installation, verify each component:
 
 - [ ] Istio installed: `kubectl get pods -n istio-system`
 - [ ] Teleport token created: `tctl get token/istio-tbot-k8s-join`
+- [ ] If using sidecar delivery: sidecar token created: `tctl get token/istio-sidecar-k8s-join`
 - [ ] Bot role created: `tctl get role/istio-workload-identity-issuer`
 - [ ] Workload identity created: `tctl get workload_identity/istio-workloads`
-- [ ] tbot running: `kubectl get pods -n teleport-system`
-- [ ] tbot logs show no errors: `kubectl logs -n teleport-system <pod-name>`
+- [ ] Workload API provider running: either DaemonSet tbot pods (`kubectl get pods -n teleport-system`) or injected tbot sidecars in your workloads
+- [ ] If using DaemonSet: tbot logs show no errors: `kubectl logs -n teleport-system <pod-name>`
 - [ ] Test app running with 2/2 containers: `kubectl get pods -n test-app`
 - [ ] SPIFFE socket exists in pod: `kubectl exec` command succeeds
 - [ ] Istio proxy detects socket: Check proxy logs

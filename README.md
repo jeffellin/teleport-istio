@@ -53,7 +53,7 @@ This integration provides:
 ## Components
 
 ### Istio Configuration
-- **Trust Domain**: `cluster.local`
+- **Trust Domain**: `ellinj.teleport.sh`
 - **Path Normalization**: Disabled (NONE) for SPIFFE compatibility
 - **Certificate Provider**: External (Teleport via SPIFFE Workload API)
 
@@ -171,6 +171,7 @@ See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and investig
 - `tbot-rbac.yaml` - Kubernetes RBAC for tbot
 - `tbot-config.yaml` - tbot configuration
 - `tbot-daemonset.yaml` - tbot DaemonSet deployment
+- `tbot-sidecar-config.yaml` - Example tbot ConfigMap for sidecar delivery per namespace
 - `test-app-deployment.yaml` - Sample application with Istio injection
 - `sock-shop-demo.yaml` - Sock Shop microservices demo application
 - `sock-shop-deny-all.yaml` - Default deny-all policy for zero-trust demonstration
@@ -178,6 +179,7 @@ See [SOCK-SHOP-DEMO.md](SOCK-SHOP-DEMO.md) for detailed setup steps and investig
 
 ### Generated Files (Gitignored - DO NOT COMMIT)
 - `istio-tbot-token.yaml` - Cluster-specific join token with JWKS (generated from template)
+- `istio-tbot-sidecar-token.yaml` - Cluster-specific join token for sidecar workloads (generated from template)
 
 **Security Note**: The `istio-tbot-token.yaml` file contains sensitive cluster-specific JWKS and should never be committed to version control. It is automatically excluded via `.gitignore`.
 
@@ -218,6 +220,45 @@ metadata:
 ```
 
 Setting it at the namespace level applies to every injected Pod in the namespace; setting it on a workload overrides or augments whatever is defined on the namespace.
+
+### Istio injection template (`spire-sidecar`)
+Use this when you want the Workload API delivered by a per-pod sidecar (no DaemonSet, no hostPath). It adds a `tbot` container and shares an `emptyDir` socket volume with the Envoy proxy. To enable it:
+
+1) Create a join token that allows the workload service accounts (use `istio-tbot-sidecar-token.yaml.template`, add JWKS and your namespaces/SAs, then `tctl create -f ...`). The `onboarding.token` in your ConfigMap must match the Teleport token name you create.
+2) Create a ConfigMap with the sidecar config in each target namespace (start from `tbot-sidecar-config.yaml` and adjust `proxy_server`, `token`, `selector`, namespace).
+3) Annotate the namespace or workload with `inject.istio.io/templates: "sidecar,spire-sidecar"`.
+
+Examples:
+
+```yaml
+# Namespace-level enablement
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-app
+  labels:
+    istio-injection: enabled
+  annotations:
+    inject.istio.io/templates: "sidecar,spire-sidecar"
+```
+
+```yaml
+# Workload-level enablement (no hostPath/userVolume needed)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: test-app
+spec:
+  template:
+    metadata:
+      annotations:
+        inject.istio.io/templates: "sidecar,spire-sidecar"
+    spec:
+      containers:
+      - name: app
+        image: nicolaka/netshoot:latest
+```
 
 ## Troubleshooting
 
