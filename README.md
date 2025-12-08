@@ -195,6 +195,30 @@ Set to `NONE` in Istio configuration to maintain SPIFFE ID compatibility.
 ### No Trailing Slash
 SPIFFE IDs must NOT have trailing slashes per the SPIFFE specification.
 
+### Istio injection template (`spire`)
+The custom `spire` template in `istio-config.yaml` adds the SPIFFE Workload API socket mount and sets `CA_ADDR`/`PILOT_CERT_PROVIDER` so the Envoy sidecar uses Teleport-issued identities. Enable it alongside the default sidecar template with the annotation `inject.istio.io/templates: "sidecar,spire"`:
+
+```yaml
+# Per-namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-app
+  labels:
+    istio-injection: enabled
+  annotations:
+    inject.istio.io/templates: "sidecar,spire"
+```
+
+```yaml
+# Per-workload (Deployment pod template)
+metadata:
+  annotations:
+    inject.istio.io/templates: "sidecar,spire"
+```
+
+Setting it at the namespace level applies to every injected Pod in the namespace; setting it on a workload overrides or augments whatever is defined on the namespace.
+
 ## Troubleshooting
 
 ### tbot pods failing with JWT validation error
