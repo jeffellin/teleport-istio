@@ -427,6 +427,63 @@ Check for:
 - Istio injection enabled on namespace
 - tbot running on the same node
 
+### Issue: Services can't communicate with databases (MongoDB/MySQL)
+
+**Symptom:** Application services show connection errors when trying to reach database pods:
+- `MongoSocketReadException: Prematurely reached end of stream`
+- `Connection refused` or `Connection reset`
+
+**Root Cause:** Database services (carts-db, catalogue-db) require explicit `DestinationRule` configuration because:
+1. They use raw TCP protocols (not HTTP)
+2. Istio cannot auto-detect mTLS for non-HTTP traffic
+3. The client needs explicit instruction to wrap TCP in mTLS
+
+**Solution:** Create a `DestinationRule` AND `PeerAuthentication` for each database service:
+
+```yaml
+# Client-side: tells carts to use mTLS when connecting to carts-db
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: carts-db
+  namespace: sock-shop
+spec:
+  host: carts-db.sock-shop.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# Server-side: enables proper mTLS negotiation for MongoDB
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: carts-db-mtls
+  namespace: sock-shop
+spec:
+  selector:
+    matchLabels:
+      app: carts-db
+  mtls:
+    mode: STRICT
+```
+
+**Why both are needed:**
+- `DestinationRule`: Tells the **client** (carts) to use mTLS for the TCP connection
+- `PeerAuthentication`: Ensures the **server** (carts-db) properly negotiates mTLS for non-HTTP protocols
+- Even though namespace-level STRICT mTLS is set, workload-specific policies trigger additional Envoy configuration needed for database protocols
+
+**Why HTTP services don't need this:** Istio's Envoy proxy can auto-detect and auto-negotiate mTLS for HTTP traffic based on `PeerAuthentication` policies. For databases, both explicit policies are required.
+
+**Service Port Naming:** Also ensure database service ports are properly named (e.g., `name: mongo`, `name: mysql`) to help Istio recognize the protocol:
+
+```yaml
+spec:
+  ports:
+  - name: mongo  # Named port helps Istio
+    port: 27017
+    targetPort: 27017
+```
+
 ### Issue: Services can't communicate
 
 ```bash
@@ -454,6 +511,50 @@ kubectl get pods -n teleport-system -o wide | grep $NODE
 
 # If no tbot pod, check DaemonSet
 kubectl get daemonset -n teleport-system
+```
+
+### Issue: Kiali shows "Service Account not found for this principal" warning
+
+**Symptom:** Kiali displays validation warnings on AuthorizationPolicy resources showing principals are invalid.
+
+**Root Cause:** Kiali doesn't recognize custom trust domains (like `ellinj.teleport.sh`) by default. It expects either:
+- Standard Kubernetes trust domain: `cluster.local`
+- Full SPIFFE URI format: `spiffe://ellinj.teleport.sh/...`
+
+**Why your policies still work:** Istio automatically prepends `spiffe://` to principals at runtime. The format `ellinj.teleport.sh/ns/sock-shop/sa/carts` is correct for Istio, even though Kiali doesn't validate it properly.
+
+**Solution:** Configure Kiali to recognize your custom trust domain:
+
+```bash
+# Edit Kiali ConfigMap
+kubectl edit configmap kiali -n istio-system
+
+# Add under external_services.istio:
+external_services:
+  istio:
+    root_namespace: istio-system
+    istio_identity_domain: ellinj.teleport.sh  # Add this line
+
+# Restart Kiali
+kubectl rollout restart deployment/kiali -n istio-system
+```
+
+**Principal Format Rules:**
+- **Do NOT** include `spiffe://` prefix in AuthorizationPolicy principals
+- Istio auto-prepends it during runtime conversion to Envoy config
+- Including it yourself results in `spiffe://spiffe://...` which breaks matching
+- Correct format: `"ellinj.teleport.sh/ns/sock-shop/sa/carts"`
+- Incorrect format: `"spiffe://ellinj.teleport.sh/ns/sock-shop/sa/carts"`
+
+Verify the fix:
+```bash
+# Check actual SPIFFE ID in certificate
+kubectl exec -n sock-shop deploy/carts -c istio-proxy -- \
+  curl -s localhost:15000/config_dump | \
+  jq -r '.configs[] | select(."@type" == "type.googleapis.com/envoy.admin.v3.SecretsConfigDump") | .dynamic_active_secrets[0].secret.tls_certificate.certificate_chain.inline_bytes' | \
+  base64 -d | openssl x509 -text -noout 2>/dev/null | grep -A2 "Subject Alternative Name"
+
+# Expected: URI:spiffe://ellinj.teleport.sh/ns/sock-shop/sa/carts
 ```
 
 ## Cleanup

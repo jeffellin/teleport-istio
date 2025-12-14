@@ -95,7 +95,7 @@ spec:
     to:
     - operation:
         methods: ["GET", "POST", "DELETE"]
-        paths: ["/cart*"]
+        paths: ["/*"]
 ---
 # Allow front-end to call orders service
 apiVersion: security.istio.io/v1
@@ -149,7 +149,6 @@ spec:
     mode: STRICT
 ---
 # Allow MySQL protocol for catalogue-db
-# MySQL protocol doesn't work well with strict mTLS wrapping
 apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
@@ -161,6 +160,20 @@ spec:
       app: catalogue-db
   mtls:
     mode: STRICT  # Enforce mTLS
+---
+# MongoDB protocol for carts-db
+# Workload-specific policy needed for proper mTLS negotiation
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: carts-db-mtls
+  namespace: sock-shop
+spec:
+  selector:
+    matchLabels:
+      app: carts-db
+  mtls:
+    mode: STRICT
 ---
 # Allow direct access to front-end without mTLS
 # This permits external LoadBalancer access without certificates
@@ -184,6 +197,18 @@ metadata:
   namespace: sock-shop
 spec:
   host: catalogue-db.sock-shop.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
+# Enforce client mTLS policy for carts-db (MongoDB)
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: carts-db
+  namespace: sock-shop
+spec:
+  host: carts-db.sock-shop.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
