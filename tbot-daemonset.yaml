@@ -49,9 +49,9 @@ spec:
           - name: config
             mountPath: /config
             readOnly: true
-          # Socket directory - mounted as hostPath for sharing with Istio sidecars
+          # Socket directory - mounted as hostPath for sharing with CSI driver
           - name: spiffe-socket
-            mountPath: /run/spire/sockets
+            mountPath: /run/spire/agent-sockets
           # Projected service account token for Kubernetes join
           - name: join-sa-token
             mountPath: /var/run/secrets/tokens
@@ -85,10 +85,10 @@ spec:
           configMap:
             name: tbot-config
         # hostPath volume for SPIFFE socket
-        # This directory will be accessible from Istio sidecars on the same node
+        # This directory will be accessible via CSI driver to Istio sidecars
         - name: spiffe-socket
           hostPath:
-            path: /run/spire/sockets
+            path: /run/spire/agent-sockets
             type: DirectoryOrCreate
         # Projected service account token for Kubernetes join method
         - name: join-sa-token

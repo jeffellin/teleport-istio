@@ -407,6 +407,137 @@ kubectl describe pod -n test-app $POD_NAME
 
 Check for `workload-spiffe-uds` volume mounted at `/var/run/secrets/workload-spiffe-uds`
 
+### Issue: Certificates not rotating automatically (503 errors after overnight)
+
+**Symptoms:**
+- Application works fine initially
+- After ~1 hour (or overnight), services return 503 errors
+- Istio proxy logs show: `Workload is using file mounted certificates. Skipping connecting to CA`
+- Istio proxy logs show: `Default Istio SDS Server will only serve files`
+
+**Root Cause:**
+When using `inject.istio.io/templates: "sidecar,spire"`, Istio merges both templates which creates:
+1. The SPIFFE socket mount (from the `spire` template) ✅
+2. A `workload-certs` emptyDir volume (from the default `sidecar` template) ❌
+
+When both the socket AND `workload-certs` directory exist, Istio chooses "file-based certificate mode" which does NOT support automatic rotation. Certificates expire after ~1 hour, causing service failures.
+
+**Verification:**
+Check if your pods are in file mode:
+```bash
+POD=$(kubectl get pod -n your-namespace -l app=your-app -o jsonpath='{.items[0].metadata.name}')
+
+# Should NOT see "will only serve files" or "file mounted certificates"
+kubectl logs -n your-namespace $POD -c istio-proxy | grep -i "file\|workload"
+
+# Should NOT see workload-certs volume
+kubectl get pod -n your-namespace $POD -o jsonpath='{.spec.volumes}' | jq '.[] | select(.name == "workload-certs")'
+```
+
+**Workaround Solution: Automated Pod Restart**
+Since the underlying issue requires SPIFFE CSI Driver migration (see below), use this CronJob to restart pods every 45 minutes before certificates expire:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cert-refresh
+  namespace: your-namespace
+spec:
+  # Run every 45 minutes (before 1-hour cert expiration)
+  schedule: "*/45 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: cert-refresh
+          restartPolicy: Never
+          containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/bash
+            - -c
+            - |
+              echo "Starting certificate refresh at $(date)"
+
+              # Restart deployments with delays to avoid downtime
+              for deployment in $(kubectl get deployments -n your-namespace -o name | cut -d/ -f2); do
+                echo "Restarting $deployment..."
+                kubectl rollout restart deployment/$deployment -n your-namespace
+                sleep 10
+              done
+
+              echo "Waiting for rollout to complete..."
+              kubectl wait --for=condition=available deployment --all -n your-namespace --timeout=300s
+
+              echo "Certificate refresh complete at $(date)"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cert-refresh
+  namespace: your-namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cert-refresh
+  namespace: your-namespace
+rules:
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cert-refresh
+  namespace: your-namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cert-refresh
+subjects:
+- kind: ServiceAccount
+  name: cert-refresh
+  namespace: your-namespace
+```
+
+Apply the CronJob:
+```bash
+kubectl apply -f cert-refresh-cronjob.yaml
+```
+
+Monitor CronJob execution:
+```bash
+# View CronJob status
+kubectl get cronjob -n your-namespace
+
+# View job history
+kubectl get jobs -n your-namespace
+
+# View logs from latest job
+kubectl logs -n your-namespace job/cert-refresh-<timestamp>
+```
+
+**Long-term Solution: SPIFFE CSI Driver**
+The proper fix is to migrate from hostPath to the SPIFFE CSI Driver:
+- Install SPIFFE CSI Driver alongside tbot DaemonSet
+- Update Istio injection template to use CSI volumes instead of hostPath
+- This enables true automatic certificate rotation via the socket
+
+References:
+- [Istio SPIRE Integration](https://istio.io/latest/docs/ops/integrations/spire/)
+- [SPIFFE CSI Driver](https://github.com/spiffe/spiffe-csi)
+- [CSI Driver Benefits](https://www.kusari.dev/blog/spiffe-spire-csi-driver)
+
 ## Verification Checklist
 
 After installation, verify each component:

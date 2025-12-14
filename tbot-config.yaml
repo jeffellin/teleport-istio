@@ -17,9 +17,9 @@ data:
       # Use the newer workload-identity-api service
       # NOT the deprecated spiffe-workload-api
       - type: workload-identity-api
-        # CRITICAL: Use "socket" as the filename to match SPIFFE standard
-        # This eliminates the need for symlink workarounds
-        listen: unix:///run/spire/sockets/socket
+        # CRITICAL: Use CSI driver standard path /run/spire/agent-sockets/socket
+        # This aligns with SPIFFE CSI driver expectations
+        listen: unix:///run/spire/agent-sockets/socket
         # Selector references the WorkloadIdentity resource name
         selector:
           name: istio-workloads

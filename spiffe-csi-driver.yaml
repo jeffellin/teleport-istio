@@ -1,0 +1,112 @@
+---
+# ServiceAccount for SPIFFE CSI Driver
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spiffe-csi-driver
+  namespace: teleport-system
+---
+# SPIFFE CSI Driver DaemonSet
+# This driver enables ephemeral volume mounts of the SPIFFE Workload API socket
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spiffe-csi-driver
+  namespace: teleport-system
+  labels:
+    app: spiffe-csi-driver
+spec:
+  selector:
+    matchLabels:
+      app: spiffe-csi-driver
+  template:
+    metadata:
+      labels:
+        app: spiffe-csi-driver
+    spec:
+      serviceAccountName: spiffe-csi-driver
+      containers:
+        # SPIFFE CSI Driver container
+        - name: spiffe-csi-driver
+          image: ghcr.io/spiffe/spiffe-csi-driver:0.2.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-workload-api-socket-dir"
+            - "/spire-agent-socket"
+            - "-csi-socket-path"
+            - "/spiffe-csi/csi.sock"
+          env:
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            # Mount the directory containing tbot's Workload API socket
+            - mountPath: /spire-agent-socket
+              name: spire-agent-socket-dir
+              readOnly: true
+            # CSI driver socket shared with kubelet
+            - mountPath: /spiffe-csi
+              name: spiffe-csi-socket-dir
+            # Container mount points
+            - mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+              name: mountpoint-dir
+          securityContext:
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - all
+            privileged: true
+        # CSI Node Driver Registrar
+        - name: node-driver-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.6.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-csi-address"
+            - "/spiffe-csi/csi.sock"
+            - "-kubelet-registration-path"
+            - "/var/lib/kubelet/plugins/csi.spiffe.io/csi.sock"
+          volumeMounts:
+            - mountPath: /spiffe-csi
+              name: spiffe-csi-socket-dir
+            - name: kubelet-plugin-registration-dir
+              mountPath: /registration
+      volumes:
+        # tbot Workload API socket directory
+        # NOTE: tbot must create socket at /run/spire/agent-sockets/socket for CSI driver
+        - name: spire-agent-socket-dir
+          hostPath:
+            path: /run/spire/agent-sockets
+            type: DirectoryOrCreate
+        # CSI driver socket directory
+        - name: spiffe-csi-socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi.spiffe.io
+            type: DirectoryOrCreate
+        # Kubelet pod mount points
+        - name: mountpoint-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        # Kubelet plugin registration directory
+        - name: kubelet-plugin-registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry
+            type: Directory
+---
+# CSIDriver resource declaration
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: "csi.spiffe.io"
+spec:
+  # Ephemeral inline volumes only
+  attachRequired: false
+  # Pod information required for mount verification
+  podInfoOnMount: true
+  # Don't change ownership on socket (typically 0777)
+  fsGroupPolicy: None
+  # Only support ephemeral volumes
+  volumeLifecycleModes:
+    - Ephemeral

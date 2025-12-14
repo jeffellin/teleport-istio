@@ -43,14 +43,16 @@ spec:
     # Sidecar injector configuration
     sidecarInjectorWebhook:
       templates:
-        # Define the SPIRE integration template
+        # SPIFFE CSI Driver integration template
         spire: |
+          labels:
+            spiffe.io/spire-managed-identity: "true"
           spec:
             volumes:
             - name: workload-socket
-              hostPath:
-                path: /run/spire/sockets
-                type: Directory
+              csi:
+                driver: "csi.spiffe.io"
+                readOnly: true
             containers:
             - name: istio-proxy
               volumeMounts:
