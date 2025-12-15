@@ -42,7 +42,12 @@ spec:
 
     # Sidecar injector configuration
     sidecarInjectorWebhook:
+      defaultTemplates:
+        - teleport-sidecar
+        - spire
       templates:
+        teleport-sidecar: |
+          {{- include_file "teleport-sidecar.tpl" | nindent 10 }}
         # SPIFFE CSI Driver integration template
         spire: |
           labels:
