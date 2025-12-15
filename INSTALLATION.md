@@ -67,6 +67,22 @@ istio-ingressgateway-xxxxxxxxxx-xxxxx   1/1     Running   0          1m
 istiod-xxxxxxxxxx-xxxxx                 1/1     Running   0          1m
 ```
 
+### Step 3: Deploy SPIFFE CSI Driver (required for rotation)
+
+Deploy the SPIFFE CSI driver (runs as a DaemonSet; ensure it is in `kube-system` so kubelet registers it):
+
+```bash
+kubectl apply -f spiffe-csi-driver.yaml
+```
+
+Verify driver pods are running on all nodes:
+
+```bash
+kubectl -n kube-system get pods -l app=spiffe-csi
+```
+
+This provides the `workload-socket` CSI volume used by tbot/Envoy for SPIFFE Workload API; without it, workloads may fall back to file mode and fail to rotate certs.
+
 ### Step 3: Extract Cluster JWKS
 
 **CRITICAL STEP**: Every Kubernetes cluster has unique JWKS (JSON Web Key Set) used to validate service account tokens. You must extract your cluster's JWKS for Teleport authentication.

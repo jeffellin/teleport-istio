@@ -21,16 +21,18 @@ Existing workload SDS socket found at var/run/secrets/workload-spiffe-uds/socket
 Workload is using file mounted certificates. Skipping connecting to CA
 ```
 
+The behaviour can be found at pkg/istio-agent/agent.go in istio/istio
+
 ## Current State (Updated 2025-12-14)
 
-### ✅ WORKING SOLUTION FOUND
+### ✅ WORKING SOLUTION FOUND (UPDATED)
 
 The front-end pod is now successfully using the SPIFFE Workload API for certificate management:
 
-**Pod Configuration:**
+**Pod Configuration (current):**
 - Only CSI volume present: `workload-socket` (csi.spiffe.io)
-- NO `workload-certs` emptyDir volume
-- Annotation: `inject.istio.io/templates: "sidecar,spire"`
+- NO `workload-certs` emptyDir volume (custom teleport-sidecar template removes it)
+- Annotation: `inject.istio.io/templates: "teleport-sidecar,spire"`
 
 **Evidence of Success:**
 ```bash
