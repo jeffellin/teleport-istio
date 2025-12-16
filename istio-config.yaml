@@ -65,6 +65,13 @@ spec:
                 mountPath: /run/secrets/workload-spiffe-uds
                 readOnly: true
               env:
+              # Force agent to ignore file mode by pointing file paths to non-existent locations
+              - name: CERT_CHAIN
+                value: /var/run/istio-dummy/missing-cert.pem
+              - name: KEY_FILE
+                value: /var/run/istio-dummy/missing-key.pem
+              - name: ROOT_CA
+                value: /var/run/istio-dummy/missing-root.pem
               - name: CA_ADDR
                 value: unix:///run/secrets/workload-spiffe-uds/socket
               - name: PILOT_CERT_PROVIDER
