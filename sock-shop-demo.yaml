@@ -45,7 +45,7 @@ spec:
       labels:
         app: front-end
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: front-end
       containers:
@@ -116,7 +116,7 @@ spec:
       labels:
         app: catalogue
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: catalogue
       containers:
@@ -185,7 +185,7 @@ spec:
       labels:
         app: catalogue-db
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: catalogue-db
       containers:
@@ -237,7 +237,7 @@ spec:
       labels:
         app: carts
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: carts
       containers:
@@ -302,12 +302,13 @@ spec:
       labels:
         app: carts-db
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: carts-db
       containers:
       - name: carts-db
         image: mongo:4.4
+        args: ["--bind_ip_all"]
         ports:
         - name: mongo
           containerPort: 27017
@@ -354,7 +355,7 @@ spec:
       labels:
         app: orders
       annotations:
-        inject.istio.io/templates: "sidecar,spire"
+        inject.istio.io/templates: "teleport-sidecar,spire"
     spec:
       serviceAccountName: orders
       containers:
