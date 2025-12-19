@@ -32,7 +32,7 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - "-workload-api-socket-dir"
-            - "/spire-agent-socket"
+            - "/run/spire/agent-sockets"
             - "-csi-socket-path"
             - "/spiffe-csi/csi.sock"
           env:
@@ -42,7 +42,7 @@ spec:
                   fieldPath: spec.nodeName
           volumeMounts:
             # Mount the directory containing tbot's Workload API socket
-            - mountPath: /spire-agent-socket
+            - mountPath: /run/spire/agent-sockets
               name: spire-agent-socket-dir
               readOnly: true
             # CSI driver socket shared with kubelet

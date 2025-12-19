@@ -2,7 +2,6 @@
 ./create-token.sh
 
 # Deploy SPIFFE CSI driver (needed for workload-socket mounts)
-kubectl apply -f spiffe-csi-driver.yaml
 
 tctl create -f istio-tbot-token.yaml
 tctl get token/istio-tbot-k8s-join
@@ -17,6 +16,8 @@ kubectl apply -f tbot-rbac.yaml
 
 # Create tbot configuration
 kubectl apply -f tbot-config.yaml
+
+kubectl apply -f spiffe-csi-driver.yaml
 
 # Deploy tbot DaemonSet
 kubectl apply -f tbot-daemonset.yaml
