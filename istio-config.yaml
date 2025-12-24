@@ -42,9 +42,14 @@ spec:
 
     # Sidecar injector configuration
     sidecarInjectorWebhook:
+      defaultTemplates:
+        - sidecar
+        - spire
       templates:
         # SPIFFE CSI Driver integration template
         spire: |
+          labels:
+            spiffe.io/spire-managed-identity: "true"
           spec:
             volumes:
             - name: workload-socket
